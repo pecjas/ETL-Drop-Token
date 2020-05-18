@@ -1,0 +1,5 @@
+__pycache__
+*.lnk
+.vscode/
+db/
+*.ini

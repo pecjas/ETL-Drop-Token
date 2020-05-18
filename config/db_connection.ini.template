@@ -1,0 +1,4 @@
+[CONNECTION]
+Driver=SQL Server
+Server=<SERVER_NAME>
+Database=98point6_drop_token
