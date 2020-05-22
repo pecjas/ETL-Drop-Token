@@ -24,7 +24,7 @@ class Player():
         self.name_first = name_first
         self.name_last = name_last
 
-        self.street = street #TODO: Potentially split this value
+        self.street = street
 
         self.email = email
         self.username = username
@@ -58,7 +58,7 @@ class Player():
         return getattr(SqlQueries, f"{cls_attr}_insert".lower())
 
     def normalize_and_set_postal_code(self, postal_code:int):
-        self.postal_code = str(postal_code) #TODO: ensure formatting per country
+        self.postal_code = str(postal_code)
 
     def normalize_and_set_dob(self, value:str):
         dob = dateparser.parse(value)
@@ -78,10 +78,6 @@ class Player():
 
         except phonenumbers.NumberParseException:
             setattr(self, phone_type, None)
-    
-    def set_internal_id(self, name:str, value:str):
-        self.id_name = None if name == "" else name
-        self.id_value = None if value == "Null" else value
 
     def normalize_and_set_nationality(self, nationality, cursor):
         country = pycountry.countries.lookup(nationality).alpha_2
@@ -127,10 +123,40 @@ class Player():
             self.img_med,
             self.img_large
         )
+    
+    def add_player_info_to_dict(self, sql_data):
+        sql_data.get('player').append(
+            (self.id,
+            self.title,
+            self.name_first,
+            self.name_last,
+            self.email,
+            self.dob,
+            self.registration,
+            self.gender,
+            self.phone_main,
+            self.phone_cell)
+        )
 
-        cursor.execute(
-            SqlQueries.player_internal_ids_insert,
-            self.id,
-            self.id_name,
-            self.id_value
+        sql_data.get('address').append(
+            (self.id,
+            self.street,
+            self.city,
+            self.state,
+            self.postal_code,
+            self.country)
+        )
+
+        sql_data.get('logins').append(
+            (self.id,
+            self.username,
+            self.salt,
+            self.pass_hashed)
+        )
+
+        sql_data.get('images').append(
+            (self.id,
+            self.thumbnail,
+            self.img_med,
+            self.img_large)
         )

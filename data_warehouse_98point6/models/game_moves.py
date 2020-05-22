@@ -37,3 +37,8 @@ class GameMove():
             self.column,
             self.result
         )
+    
+    def add_game_move_info_to_list(self, sql_data):
+        sql_data.append(
+            (self.game_id, self.player_id, self.move_number, self.column, self.result)
+        )

@@ -6,6 +6,7 @@ from collections import namedtuple
 from data_warehouse_98point6.db_connection import get_connection
 from data_warehouse_98point6.models.players import Player
 from data_warehouse_98point6.models.game_moves import GameMove
+from data_warehouse_98point6.sql_queries import SqlQueries
 
 DATASOURCE = {
     'game_data': r"https://s3-us-west-2.amazonaws.com/98point6-homework-assets/game_data.csv",
@@ -25,32 +26,29 @@ def seed() -> bool:
         seeded_successfully = False
         print("Failed to seed players.")
 
-    if not seed_game_data(connection):
-        seeded_successfully = False
-        print("Failed to seed game data")
+    # if not seed_game_data(connection):
+    #     seeded_successfully = False
+    #     print("Failed to seed game data")
 
     connection.close()
     return True
 
 def seed_players(connection) -> bool:
-    if database_has_data(connection, MAIN_TABLES["players"]):
-        print(data_not_seeded_string("Player"))
-        return
-
     try:
-        retrieved_all_players = True
+        retrieved_all_players = False
         page = 0
-        while retrieved_all_players is True:
+        while retrieved_all_players is False:
             response = requests.get(
                 DATASOURCE['players'],
                 params={'page': page}
             )
             if response.status_code != requests.codes.ok:
+                print(f"Error encountered at page {page}.")
                 return False
 
             players = response.json()
             if players == []:
-                retrieved_all_players = False
+                retrieved_all_players = True
             else:
                 save_players_to_database(players, connection)
             
@@ -73,14 +71,23 @@ def data_not_seeded_string(data_type) -> str:
 
 def save_players_to_database(players, connection):
     cursor = connection.cursor()
+    cursor.fast_executemany = True
 
+    sql_data = {
+        'player': [],
+        'address': [],
+        'logins': [],
+        'images': [],
+    }
+
+    player_count=0
     for player in players:
         player_obj = Player(player['id'])
 
         player_obj.set_trusted_data(
             name_first=player['data']['name']['first'],
             name_last=player['data']['name']['last'],
-            street=player['data']['location']['street'], #TODO: Potentially split this
+            street=player['data']['location']['street'],
             email=player['data']['email'],
             username=player['data']['login']['username'],
             salt=player['data']['login']['salt'],
@@ -105,25 +112,37 @@ def save_players_to_database(players, connection):
         player_obj.normalize_and_set_phone_number(player['data']['phone'], 'phone_main', player['data']['nat'])
         player_obj.normalize_and_set_phone_number(player['data']['cell'], 'phone_cell', player['data']['nat'])
 
-        player_obj.set_internal_id(player['data']['id']['name'], player['data']['id']['value'])
         player_obj.normalize_and_set_nationality(player['data']['nat'], cursor)
 
-        player_obj.add_player_info_to_cursor(cursor)
-    
+        player_obj.add_player_info_to_dict(sql_data)
+
+        player_count += 1
+        if player_count % 20 == 0:
+            execute_player_queries(sql_data, cursor)
+            connection.commit()
+
+            for value in sql_data.items():
+                value.clear()
+
+    execute_player_queries(sql_data, cursor)
+
     connection.commit()
     cursor.close()
-            
+
+def execute_player_queries(sql_data, cursor):
+    cursor.executemany(SqlQueries.player_insert, sql_data.get('player'))
+    cursor.executemany(SqlQueries.player_addresses_insert, sql_data.get('address'))
+    cursor.executemany(SqlQueries.player_logins_insert, sql_data.get('logins'))
+    cursor.executemany(SqlQueries.player_images_insert, sql_data.get('images'))
+
 
 def seed_game_data(connection):
-    if database_has_data(connection, MAIN_TABLES["game_data"]):
-        print(data_not_seeded_string("Game"))
-        return False
-
     try:
         response = requests.get(DATASOURCE['game_data'],)
         if response.status_code != requests.codes.ok:
             return False
 
+        track_known_game_results(connection)
         save_game_to_database(response.content.decode('UTF-8'), connection)
 
     except Exception as e:
@@ -132,12 +151,27 @@ def seed_game_data(connection):
 
     return True
 
+def track_known_game_results(connection):
+    cursor = connection.cursor()
+    cursor.execute(SqlQueries.game_results_select)
+
+    while True:
+        row = cursor.fetchone()
+        if not row:
+            break
+        GameMove.result_values.insert(row[0], row[1])
+    
+    cursor.close()
+
 def save_game_to_database(csv_data, connection):
     cursor = connection.cursor()
+    cursor.fast_executemany = True
+
     csvreader = csv.reader(csv_data.splitlines())
     next(csvreader)
 
     rowcount = 0
+    sql_data = []
     for row in csvreader:
         game_move = GameMove(row[0])
 
@@ -148,11 +182,14 @@ def save_game_to_database(csv_data, connection):
         )
 
         game_move.set_results(row[4], cursor)
-        game_move.add_game_move_info_to_cursor(cursor)
+        game_move.add_game_move_info_to_list(sql_data)
 
         rowcount += 1
-        if rowcount % 25 == 0:
+        if rowcount % 1000 == 0:
+            cursor.executemany(SqlQueries.game_data_insert, sql_data)
             connection.commit()
+            sql_data.clear()
 
+    cursor.executemany(SqlQueries.game_data_insert, sql_data)
     connection.commit()
     cursor.close()
