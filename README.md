@@ -3,11 +3,12 @@
 This utility extracts data related to the 98point6 Drop Token game and its players from external sources, transforms the data where appropriate, and loads it into a local SQL Server database.
 
 **Game Data Source**: https://s3-us-west-2.amazonaws.com/98point6-homework-assets/game_data.csv
+
 **Player Data Source**: https://x37sv76kth.execute-api.us-west-1.amazonaws.com/prod/users
 
 ### Software Requirements:
-1. Locally installed [SQL Server] (https://docs.microsoft.com/en-us/sql/database-engine/install-windows/install-sql-server?view=sql-server-ver15)
-2. [SQL Server Management Studio] (https://docs.microsoft.com/en-us/sql/ssms/download-sql-server-management-studio-ssms?view=sql-server-ver15)
+1. Locally installed SQL Server (https://docs.microsoft.com/en-us/sql/database-engine/install-windows/install-sql-server?view=sql-server-ver15)
+2. SQL Server Management Studio (https://docs.microsoft.com/en-us/sql/ssms/download-sql-server-management-studio-ssms?view=sql-server-ver15)
 3. Python 3 (See requirements.txt file for required packages, all of which can be installed via pip)
 
 ### Info About Directories in this Package
