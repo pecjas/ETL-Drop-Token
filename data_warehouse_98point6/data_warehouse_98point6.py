@@ -1,12 +1,13 @@
-import time
 import pyodbc
+from menu import Menu
 import data_warehouse_98point6.seed_database as seed_database
 
-def prompt_for_action():
-    pass
-
 def start_application():
-    if seed_database.seed():
-        input("Database has been seeded. Press any key to quit.")
-    else:
-        input("An error was encounter while attempting to seed the database.")
+    menu = Menu(title="Select Execution Mode",
+        options=[
+        ("Update All Data", seed_database.seed),
+        ("Request Failed Player Pages", seed_database.request_failed_player_pages),
+        ("Exit Utility", Menu.CLOSE)
+    ])
+
+    menu.open()

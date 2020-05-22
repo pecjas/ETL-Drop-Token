@@ -2,7 +2,7 @@ import pyodbc
 import requests
 import json
 import csv
-from collections import namedtuple
+import os
 from data_warehouse_98point6.db_connection import get_connection
 from data_warehouse_98point6.models.players import Player
 from data_warehouse_98point6.models.game_moves import GameMove
@@ -18,23 +18,26 @@ MAIN_TABLES = {
     'players': "[dbo].players"
 }
 
-def seed() -> bool:
+MAIN_DIRECTORY = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+
+ERROR_FILE = os.path.join(MAIN_DIRECTORY, "errors", "player_errors.json")
+
+def seed():
     connection = get_connection()
-    seeded_successfully = True
 
     if not seed_players(connection):
-        seeded_successfully = False
         print("Failed to seed players.")
 
-    # if not seed_game_data(connection):
-    #     seeded_successfully = False
-    #     print("Failed to seed game data")
+    if not seed_game_data(connection):
+        print("Failed to seed game data")
 
     connection.close()
-    return True
 
 def seed_players(connection) -> bool:
+    player_errors = []
     try:
+        track_known_player_details(connection)
+
         retrieved_all_players = False
         page = 0
         while retrieved_all_players is False:
@@ -44,6 +47,7 @@ def seed_players(connection) -> bool:
             )
             if response.status_code != requests.codes.ok:
                 print(f"Error encountered at page {page}.")
+                player_errors.append(page)
                 return False
 
             players = response.json()
@@ -58,16 +62,32 @@ def seed_players(connection) -> bool:
         print(f"Exception: {e}")
         return False
     
+    save_player_errors(player_errors)
+    if len(player_errors) > 0:
+        print("Player pages that could not be retrieved have been saved to player_errors.json")
+
     return True
 
-def database_has_data(connection, table: str) -> bool:
+def track_known_player_details(connection):
+    data_to_track = [
+        "gender_values",
+        "title_values",
+        "city_values",
+        "state_values",
+        "country_values"
+    ]
     cursor = connection.cursor()
-    cursor.execute(f"SELECT Count(*) as 'count' FROM {table}")
+    for values in data_to_track:
+        cursor.execute(getattr(SqlQueries, f"{values}_select"))
 
-    return cursor.fetchval() > 0
+        while True:
+            row = cursor.fetchone()
+            if not row:
+                break
+            getattr(Player, values).insert(row[0], row[1])
+    
+    cursor.close()
 
-def data_not_seeded_string(data_type) -> str:
-    return f"{data_type} data not seeded because data already exists in the table."
 
 def save_players_to_database(players, connection):
     cursor = connection.cursor()
@@ -193,3 +213,51 @@ def save_game_to_database(csv_data, connection):
     cursor.executemany(SqlQueries.game_data_insert, sql_data)
     connection.commit()
     cursor.close()
+
+def save_player_errors(errors: list):
+    global ERROR_FILE
+    with open(ERROR_FILE, "w") as error_file:
+        json.dump(errors, error_file)
+
+def request_failed_player_pages():
+    error_pages = load_player_errors()
+    persistent_errors = []
+
+    connection = get_connection()
+    try:
+        track_known_player_details(connection)
+
+        for page in error_pages:
+            response = requests.get(
+                DATASOURCE['players'],
+                params={'page': page}
+            )
+
+            if response.status_code != requests.codes.ok:
+                print(f"Error encountered at page {page}.")
+                persistent_errors.append(page)
+                return False
+
+            players = response.json()
+            if players == []:
+                retrieved_all_players = True
+            else:
+                save_players_to_database(players, connection)
+            
+            page += 1
+
+    except Exception as e:
+        print(f"Exception: {e}")
+        return False
+    
+    save_player_errors(persistent_errors)
+    if len(persistent_errors) > 0:
+        print("Player pages that could not be retrieved have been saved to player_errors.json")
+
+    connection.close()
+    return True
+
+def load_player_errors():
+    global ERROR_FILE
+    with open(ERROR_FILE, "r") as error_file:
+        return json.load(error_file)
